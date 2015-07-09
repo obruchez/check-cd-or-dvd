@@ -23,7 +23,7 @@ object CheckCdOrDvd {
     }
 
     def candidateMatch(that: FileWithoutMd5): Boolean =
-      this.file.getName == that.file.getName && this.size == that.size
+      this.file.getName.toLowerCase == that.file.getName.toLowerCase && this.size == that.size
   }
 
   def compare(sourceDirectory: File, destinationDirectory: File): Unit = {
@@ -44,19 +44,18 @@ object CheckCdOrDvd {
 
     val sourcePrefixLength = sourceDirectory.getCanonicalPath.length
 
-    println(s"=== Archived (${archivedSourceFiles.size}) ===")
-    for (archivedSourceFile <- archivedSourceFiles.sortBy(_.file.getCanonicalPath)) {
-      println(s" - ${archivedSourceFile.file.getCanonicalPath.substring(sourcePrefixLength)}")
+    def dumpFiles(files: Seq[FileWithoutMd5], header: String): Unit = {
+      println(s"=== $header (${files.size}) ===")
+
+      for (file <- files.sortBy(_.file.getCanonicalPath)) {
+        println(s" - ${file.file.getCanonicalPath.substring(sourcePrefixLength)}")
+      }
+
+      println()
     }
 
-    println()
-
-    println(s"=== Not archived (${nonArchivedSourceFiles.size}) ===")
-    for (nonArchivedSourceFile <- nonArchivedSourceFiles) {
-      println(s" - ${nonArchivedSourceFile.file.getCanonicalPath.substring(sourcePrefixLength)}")
-    }
-
-    println()
+    dumpFiles(archivedSourceFiles, "Archived")
+    dumpFiles(nonArchivedSourceFiles, "Not archived")
   }
 
   def sourceFileFoundInDestinationFiles(sourceFile: FileWithoutMd5, destinationFiles: Seq[FileWithoutMd5]): Unit = {
@@ -66,13 +65,13 @@ object CheckCdOrDvd {
   def filesWithoutMd5(directory: File): Seq[FileWithoutMd5] =
      for {
        file <- filesInDirectory(directory, recursive = true, includeDirectories = false)
-       if !systemFile(file)
+       if !fileToIgnore(file)
        size = file.length()
      } yield FileWithoutMd5(file, size)
 
-  def systemFile(file: File): Boolean = {
+  def fileToIgnore(file: File): Boolean = {
     val baseName = file.getName
-    Set("Thumbs.db", ".DS_Store").contains(baseName)
+    Set("Picasa.ini", "Thumbs.db", ".DS_Store").contains(baseName)
   }
 
   lazy val md5Digest = MessageDigest.getInstance("MD5")
