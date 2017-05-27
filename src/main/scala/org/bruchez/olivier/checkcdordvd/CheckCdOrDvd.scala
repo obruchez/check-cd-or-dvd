@@ -1,4 +1,4 @@
-package org.bruchez.olivier
+package org.bruchez.olivier.checkcdordvd
 
 import java.io._
 import java.security._
