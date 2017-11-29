@@ -40,7 +40,7 @@ object CheckCdOrDvd {
         val destinationCandidates = destinationFiles.filter(_.candidateMatch(sourceFile))
         val archived = destinationCandidates.exists(_.withMd5.md5 == sourceFile.withMd5.md5)
         archived
-    }
+      }
 
     val sourcePrefixLength = sourceDirectory.getCanonicalPath.length
 
@@ -58,16 +58,15 @@ object CheckCdOrDvd {
     dumpFiles(nonArchivedSourceFiles, "Not archived")
   }
 
-  def sourceFileFoundInDestinationFiles(sourceFile: FileWithoutMd5, destinationFiles: Seq[FileWithoutMd5]): Unit = {
-
-  }
+  def sourceFileFoundInDestinationFiles(sourceFile: FileWithoutMd5,
+                                        destinationFiles: Seq[FileWithoutMd5]): Unit = {}
 
   def filesWithoutMd5(directory: File): Seq[FileWithoutMd5] =
-     for {
-       file <- filesInDirectory(directory, recursive = true, includeDirectories = false)
-       if !fileToIgnore(file)
-       size = file.length()
-     } yield FileWithoutMd5(file, size)
+    for {
+      file <- filesInDirectory(directory, recursive = true, includeDirectories = false)
+      if !fileToIgnore(file)
+      size = file.length()
+    } yield FileWithoutMd5(file, size)
 
   def fileToIgnore(file: File): Boolean = {
     val baseName = file.getName
@@ -82,7 +81,8 @@ object CheckCdOrDvd {
     val inputStream = new FileInputStream(file)
 
     try {
-      val buffer = new Array[Byte](4096)
+      val BufferSize = 4096
+      val buffer = new Array[Byte](BufferSize)
 
       @scala.annotation.tailrec
       def computeMd5UntilEndOfFile(): Unit = {
@@ -101,10 +101,17 @@ object CheckCdOrDvd {
     }
   }
 
-  def filesInDirectory(directory: File, recursive: Boolean, includeDirectories: Boolean): Seq[File] = {
-    val (directories, files) = Option(directory.listFiles()).fold(Seq[File]())(_.toSeq).partition(_.isDirectory)
+  def filesInDirectory(directory: File,
+                       recursive: Boolean,
+                       includeDirectories: Boolean): Seq[File] = {
+    val (directories, files) =
+      Option(directory.listFiles()).fold(Seq[File]())(_.toSeq).partition(_.isDirectory)
     val subDirectoriesAndFiles =
-      if (recursive) directories.flatMap(filesInDirectory(_, recursive = true, includeDirectories)) else Seq()
+      if (recursive) {
+        directories.flatMap(filesInDirectory(_, recursive = true, includeDirectories))
+      } else {
+        Seq()
+      }
     (if (includeDirectories) directories else Seq()) ++ files ++ subDirectoriesAndFiles
   }
 }
