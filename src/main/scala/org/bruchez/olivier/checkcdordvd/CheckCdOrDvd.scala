@@ -58,8 +58,10 @@ object CheckCdOrDvd {
     dumpFiles(nonArchivedSourceFiles, "Not archived")
   }
 
-  def sourceFileFoundInDestinationFiles(sourceFile: FileWithoutMd5,
-                                        destinationFiles: Seq[FileWithoutMd5]): Unit = {}
+  def sourceFileFoundInDestinationFiles(
+      sourceFile: FileWithoutMd5,
+      destinationFiles: Seq[FileWithoutMd5]
+  ): Unit = {}
 
   def filesWithoutMd5(directory: File): Seq[FileWithoutMd5] =
     for {
@@ -101,9 +103,11 @@ object CheckCdOrDvd {
     }
   }
 
-  def filesInDirectory(directory: File,
-                       recursive: Boolean,
-                       includeDirectories: Boolean): Seq[File] = {
+  def filesInDirectory(
+      directory: File,
+      recursive: Boolean,
+      includeDirectories: Boolean
+  ): Seq[File] = {
     val (directories, files) =
       Option(directory.listFiles()).fold(Seq[File]())(_.toSeq).partition(_.isDirectory)
     val subDirectoriesAndFiles =
