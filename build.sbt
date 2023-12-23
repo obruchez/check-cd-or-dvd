@@ -1,7 +1,10 @@
 name := "check-cd-or-dvd"
 
-version := "1.0"
+version := "1.1"
 
-scalaVersion := "2.13.8"
+scalaVersion := "2.13.12"
 
-scalafmtOnCompile in ThisBuild := true
+ThisBuild / scalafmtOnCompile := true
+
+assembly / mainClass := Some("org.bruchez.olivier.checkcdordvd.CheckCdOrDvd")
+assembly / assemblyJarName := "check-cd-or-dvd.jar"

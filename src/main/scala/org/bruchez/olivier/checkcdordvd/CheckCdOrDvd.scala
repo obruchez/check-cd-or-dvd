@@ -5,11 +5,22 @@ import java.security._
 
 object CheckCdOrDvd {
   def main(args: Array[String]): Unit = {
-    if (args.length != 2) {
-      println("Usage: CheckCdOrDvd <src> <dst>")
+    if (args.length != 2 && !(args.length == 4 && args(0) == "--move-archived-to")) {
+      println("Usage: CheckCdOrDvd [--move-archived-to <dir>] <src> <dst>")
       System.exit(-1)
     } else {
-      compare(new File(args(0)), new File(args(1)))
+      val (srcDir, dstDir, archivedDirOpt) =
+        if (args.length == 4) {
+          (args(2), args(3), Some(args(1)))
+        } else {
+          (args(0), args(1), None)
+        }
+
+      compare(
+        srcDir = new File(srcDir),
+        dstDir = new File(dstDir),
+        archivedDirOpt = archivedDirOpt.map(new File(_))
+      )
     }
   }
 
@@ -26,56 +37,63 @@ object CheckCdOrDvd {
       this.file.getName.toLowerCase == that.file.getName.toLowerCase && this.size == that.size
   }
 
-  def compare(sourceDirectory: File, destinationDirectory: File): Unit = {
-    val sourceFiles = filesWithoutMd5(sourceDirectory)
-    println(s"Source files: ${sourceFiles.size}")
+  private def compare(srcDir: File, dstDir: File, archivedDirOpt: Option[File]): Unit = {
+    val srcFiles = filesWithoutMd5(srcDir)
+    println(s"Source files: ${srcFiles.size}")
 
-    val destinationFiles = filesWithoutMd5(destinationDirectory)
-    println(s"Destination files: ${destinationFiles.size}")
+    val dstFiles = filesWithoutMd5(dstDir)
+    println(s"Destination files: ${dstFiles.size}")
 
     println()
 
-    val (archivedSourceFiles, nonArchivedSourceFiles) =
-      sourceFiles partition { sourceFile =>
-        val destinationCandidates = destinationFiles.filter(_.candidateMatch(sourceFile))
-        val archived = destinationCandidates.exists(_.withMd5.md5 == sourceFile.withMd5.md5)
+    val (archivedSrcFiles, nonArchivedSrcFiles) =
+      srcFiles partition { srcFile =>
+        val dstCandidates = dstFiles.filter(_.candidateMatch(srcFile))
+        val archived = dstCandidates.exists(_.withMd5.md5 == srcFile.withMd5.md5)
+
+        if (archived && archivedDirOpt.isDefined) {
+          val archivedDir = archivedDirOpt.get
+          val archivedFile = new File(
+            archivedDir,
+            srcFile.file.getAbsolutePath.substring(srcDir.getAbsolutePath.length)
+          )
+          println(s"Moving ${srcFile.file.getCanonicalPath} to ${archivedFile.getAbsolutePath}...")
+          archivedFile.getParentFile.mkdirs()
+          srcFile.file.renameTo(archivedFile)
+        }
+
         archived
       }
 
-    val sourcePrefixLength = sourceDirectory.getCanonicalPath.length
+    val srcPrefixLength = srcDir.getCanonicalPath.length
 
     def dumpFiles(files: Seq[FileWithoutMd5], header: String): Unit = {
       println(s"=== $header (${files.size}) ===")
 
       for (file <- files.sortBy(_.file.getCanonicalPath)) {
-        println(s" - ${file.file.getCanonicalPath.substring(sourcePrefixLength)}")
+        println(s" - ${file.file.getCanonicalPath.substring(srcPrefixLength)}")
       }
 
       println()
     }
 
-    dumpFiles(archivedSourceFiles, "Archived")
-    dumpFiles(nonArchivedSourceFiles, "Not archived")
+    dumpFiles(archivedSrcFiles, "Archived")
+    dumpFiles(nonArchivedSrcFiles, "Not archived")
   }
 
-  def sourceFileFoundInDestinationFiles(
-      sourceFile: FileWithoutMd5,
-      destinationFiles: Seq[FileWithoutMd5]
-  ): Unit = {}
-
-  def filesWithoutMd5(directory: File): Seq[FileWithoutMd5] =
+  private def filesWithoutMd5(directory: File): Seq[FileWithoutMd5] =
     for {
       file <- filesInDirectory(directory, recursive = true, includeDirectories = false)
       if !fileToIgnore(file)
       size = file.length()
     } yield FileWithoutMd5(file, size)
 
-  def fileToIgnore(file: File): Boolean = {
+  private def fileToIgnore(file: File): Boolean = {
     val baseName = file.getName
     Set("Picasa.ini", "Thumbs.db", ".DS_Store").contains(baseName)
   }
 
-  lazy val md5Digest = MessageDigest.getInstance("MD5")
+  private lazy val md5Digest = MessageDigest.getInstance("MD5")
 
   def md5(file: File): String = {
     md5Digest.reset()
