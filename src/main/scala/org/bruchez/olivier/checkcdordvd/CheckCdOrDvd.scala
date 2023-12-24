@@ -3,26 +3,48 @@ package org.bruchez.olivier.checkcdordvd
 import java.io._
 import java.security._
 
-object CheckCdOrDvd {
-  def main(args: Array[String]): Unit = {
-    if (args.length != 2 && !(args.length == 4 && args(0) == "--move-archived-to")) {
-      println("Usage: CheckCdOrDvd [--move-archived-to <dir>] <src> <dst>")
-      System.exit(-1)
-    } else {
-      val (srcDir, dstDir, archivedDirOpt) =
-        if (args.length == 4) {
-          (args(2), args(3), Some(args(1)))
-        } else {
-          (args(0), args(1), None)
-        }
+case class Arguments(
+    srcDir: File = new File(""),
+    dstDir: File = new File(""),
+    md5: Boolean = true,
+    archivedDirOpt: Option[File] = None
+)
 
-      compare(
-        srcDir = new File(srcDir),
-        dstDir = new File(dstDir),
-        archivedDirOpt = archivedDirOpt.map(new File(_))
+object Arguments {
+  val NoMd5 = "--no-md5"
+  val MoveArchivedTo = "--move-archived-to"
+
+  val usage = s"CheckCdOrDvd [$NoMd5] [$MoveArchivedTo <dir>] <src> <dst>"
+
+  def apply(args: Array[String]): Option[Arguments] =
+    this.args(remainingArgs = args, acc = Arguments())
+
+  private def args(remainingArgs: Array[String], acc: Arguments): Option[Arguments] =
+    if (remainingArgs.length == 2) {
+      Some(acc.copy(srcDir = new File(remainingArgs(0)), dstDir = new File(remainingArgs(1))))
+    } else if (remainingArgs.length == 3 && remainingArgs(0) == NoMd5) {
+      args(remainingArgs = remainingArgs.drop(1), acc = acc.copy(md5 = false))
+    } else if (remainingArgs.length == 4 && remainingArgs(0) == MoveArchivedTo) {
+      args(
+        remainingArgs = remainingArgs.drop(2),
+        acc = acc.copy(archivedDirOpt = Some(new File(remainingArgs(1))))
       )
+    } else {
+      None
     }
-  }
+}
+
+object CheckCdOrDvd {
+
+  def main(args: Array[String]): Unit =
+    Arguments(args) match {
+      case Some(arguments) =>
+        compare(arguments)
+
+      case None =>
+        println(s"Usage: ${Arguments.usage}")
+        System.exit(-1)
+    }
 
   case class FileWithMd5(file: File, size: Long, md5: String)
 
@@ -33,52 +55,72 @@ object CheckCdOrDvd {
       FileWithMd5(file, size, md5)
     }
 
-    def candidateMatch(that: FileWithoutMd5): Boolean =
+    def candidateMatch(that: FileWithoutMd5): Boolean = {
+      // Same filename and file size
       this.file.getName.toLowerCase == that.file.getName.toLowerCase && this.size == that.size
+    }
   }
 
-  private def compare(srcDir: File, dstDir: File, archivedDirOpt: Option[File]): Unit = {
-    val srcFiles = filesWithoutMd5(srcDir)
+  private def fileMapping(arguments: Arguments): Seq[(FileWithoutMd5, Option[FileWithoutMd5])] = {
+    val srcFiles = filesWithoutMd5(arguments.srcDir)
     println(s"Source files: ${srcFiles.size}")
 
-    val dstFiles = filesWithoutMd5(dstDir)
+    val dstFiles = filesWithoutMd5(arguments.dstDir)
     println(s"Destination files: ${dstFiles.size}")
 
     println()
 
-    val (archivedSrcFiles, nonArchivedSrcFiles) =
-      srcFiles partition { srcFile =>
-        val dstCandidates = dstFiles.filter(_.candidateMatch(srcFile))
-        val archived = dstCandidates.exists(_.withMd5.md5 == srcFile.withMd5.md5)
-
-        if (archived && archivedDirOpt.isDefined) {
-          val archivedDir = archivedDirOpt.get
-          val archivedFile = new File(
-            archivedDir,
-            srcFile.file.getAbsolutePath.substring(srcDir.getAbsolutePath.length)
-          )
-          println(s"Moving ${srcFile.file.getCanonicalPath} to ${archivedFile.getAbsolutePath}...")
-          archivedFile.getParentFile.mkdirs()
-          srcFile.file.renameTo(archivedFile)
+    srcFiles map { srcFile =>
+      val dstCandidates = dstFiles.filter(_.candidateMatch(srcFile))
+      val dstFileOpt =
+        if (arguments.md5) {
+          dstCandidates.find(_.withMd5.md5 == srcFile.withMd5.md5)
+        } else {
+          dstCandidates.headOption
         }
 
-        archived
+      for {
+        _ <- dstFileOpt
+        archiveDir <- arguments.archivedDirOpt
+      } {
+        val archivedFile = new File(
+          archiveDir,
+          srcFile.file.getAbsolutePath.substring(arguments.srcDir.getAbsolutePath.length)
+        )
+        println(s"Moving ${srcFile.file.getCanonicalPath} to ${archivedFile.getAbsolutePath}...")
+
+        archivedFile.getParentFile.mkdirs()
+        srcFile.file.renameTo(archivedFile)
       }
 
-    val srcPrefixLength = srcDir.getCanonicalPath.length
+      srcFile -> dstFileOpt
+    }
+  }
 
-    def dumpFiles(files: Seq[FileWithoutMd5], header: String): Unit = {
+  private def compare(arguments: Arguments): Unit = {
+    val fileMapping = this.fileMapping(arguments)
+
+    // val (archivedSrcFiles, nonArchivedSrcFiles) =
+
+    val srcPrefixLength = arguments.srcDir.getCanonicalPath.length
+    val dstPrefixLength = arguments.dstDir.getCanonicalPath.length
+
+    def dumpFiles(files: Seq[(FileWithoutMd5, Option[FileWithoutMd5])], header: String): Unit = {
       println(s"=== $header (${files.size}) ===")
 
-      for (file <- files.sortBy(_.file.getCanonicalPath)) {
-        println(s" - ${file.file.getCanonicalPath.substring(srcPrefixLength)}")
+      for (file <- files.sortBy(_._1.file.getCanonicalPath)) {
+        print(s" - ${file._1.file.getCanonicalPath.substring(srcPrefixLength)}")
+        file._2.foreach { dstFile =>
+          print(s" -> ${dstFile.file.getCanonicalPath.substring(dstPrefixLength)}")
+        }
+        println()
       }
 
       println()
     }
 
-    dumpFiles(archivedSrcFiles, "Archived")
-    dumpFiles(nonArchivedSrcFiles, "Not archived")
+    dumpFiles(fileMapping.filter(_._2.isDefined), "Archived")
+    dumpFiles(fileMapping.filter(_._2.isEmpty), "Not archived")
   }
 
   private def filesWithoutMd5(directory: File): Seq[FileWithoutMd5] =
